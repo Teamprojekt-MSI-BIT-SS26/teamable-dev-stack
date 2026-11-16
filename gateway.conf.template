@@ -1,0 +1,35 @@
+# Path routing in front of backend and frontend (docs: dev-stack.md, see README)
+# Locally the browser talks to this gateway directly, on the VM the host nginx
+# terminates TLS and forwards to it.
+
+# Keep X-Forwarded-Proto from the host nginx (VM: https), otherwise use the own scheme
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 20m;
+
+    # $http_host keeps the port (local :8080), so redirects and LTI URLs stay correct
+    proxy_set_header Host              $http_host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    proxy_read_timeout 3600;
+
+    # Static files of the Django admin (collectstatic writes into the volume)
+    location /static/ {
+        alias /srv/static/;
+    }
+
+    location ~ ^/(api|admin|lti|oauth|health)(/|$) {
+        proxy_pass http://web:8000;
+    }
+
+    location / {
+        proxy_pass http://frontend:3000;
+    }
+}

@@ -1,0 +1,144 @@
+# Teamable dev stack: frontend + backend + Moodle 4.5 in one Compose project
+#
+# Same stack locally and on the HTWG VM, only .env differs:
+#   local: http://teamable.localhost:8080, http://moodle.localhost:8008
+#   VM:    https://<teamable-host>, https://<moodle-host> (TLS in the host nginx)
+#
+# Docs: dev-stack.md in the documentation repository (see README)
+# Start: cp .env.example .env && docker compose up -d --build
+
+name: ${COMPOSE_PROJECT_NAME:-teamable-dev}
+
+services:
+  # Path routing like on the VM: backend paths -> web, rest -> frontend
+  gateway:
+    image: nginx:1.28
+    restart: unless-stopped
+    depends_on:
+      - web
+      - frontend
+    ports:
+      - 127.0.0.1:${TEAMABLE_PORT:-8080}:80
+    volumes:
+      - ./gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - backend-static:/srv/static:ro
+
+  web:
+    build: ${BACKEND_DIR:-./teamable-backend}
+    # The Dockerfile has no CMD: collectstatic, migrate, gunicorn on :8000
+    command: ["./runserver.sh"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      SERVER_NAME: ${TEAMABLE_HOST:?set TEAMABLE_HOST in .env}
+      FRONTEND_BASE_URL: ${TEAMABLE_URL:?set TEAMABLE_URL in .env}
+      LTI_CONF_FOLDER: lti/config
+      LTI_CONF_FILE_NAME: lti_config_settings.json
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    extra_hosts:
+      # The backend calls Moodle under the Platform ID (certs.php, token.php, NRPS)
+      - ${MOODLE_HOST:?set MOODLE_HOST in .env}:host-gateway
+    volumes:
+      - backend-static:/code/staticfiles
+      - ${BACKEND_DIR:-./teamable-backend}/src/lti/config:/code/lti/config:ro
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teamable}
+      POSTGRES_USER: ${POSTGRES_USER:-teamable}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ${FRONTEND_DIR:-./teamable-frontend}
+      # Like the Dockerfile of the repository, but with ARGs (next.config.js writes
+      # BACKEND_BASE_URI into the client bundle at build time) and a CMD
+      dockerfile_inline: |
+        FROM node:20.16.0
+        WORKDIR /code
+        COPY package.json yarn.lock /code/
+        RUN yarn install --frozen-lockfile
+        COPY . /code
+        ARG BACKEND_BASE_URI
+        ARG NEXT_PUBLIC_BACKEND_URL
+        ENV BACKEND_BASE_URI=$$BACKEND_BASE_URI NEXT_PUBLIC_BACKEND_URL=$$NEXT_PUBLIC_BACKEND_URL
+        RUN yarn build
+        EXPOSE 3000
+        CMD ["yarn", "start"]
+      args:
+        BACKEND_BASE_URI: ${TEAMABLE_URL}
+        NEXT_PUBLIC_BACKEND_URL: ${TEAMABLE_URL}
+    restart: unless-stopped
+    environment:
+      BACKEND_BASE_URI: ${TEAMABLE_URL}
+    extra_hosts:
+      # Server-side requests of Next.js go to the host (gateway or host nginx)
+      - ${TEAMABLE_HOST}:host-gateway
+
+  moodle-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MOODLE_DB_ROOT_PASSWORD:?set MOODLE_DB_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: moodle
+      MARIADB_USER: moodle
+      MARIADB_PASSWORD: ${MOODLE_DB_PASSWORD:?set MOODLE_DB_PASSWORD in .env}
+    volumes:
+      - moodle-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 20
+
+  moodle:
+    image: ${MOODLE_IMAGE:-brandkern/moodle:v4.5.4}
+    restart: unless-stopped
+    depends_on:
+      moodle-db:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${MOODLE_PORT:-8008}:80
+    environment: &moodle-env
+      DB_HOST: moodle-db
+      DB_NAME: moodle
+      DB_USER: moodle
+      DB_PASS: ${MOODLE_DB_PASSWORD}
+      WWWROOT: ${MOODLE_URL:?set MOODLE_URL in .env}
+      MOODLE_SSLPROXY: ${MOODLE_SSLPROXY:-false}
+    extra_hosts:
+      # Moodle may call the tool URLs (JWKS, login) from the server
+      - ${TEAMABLE_HOST}:host-gateway
+    volumes: &moodle-volumes
+      - moodledata:/var/www/moodledata
+      # Own config.php instead of the generated one (adds sslproxy)
+      - ./moodle-config.php:/var/www/html/config.php:ro
+
+  # Moodle scheduled tasks, cron.sh is part of the image
+  moodle-cron:
+    image: ${MOODLE_IMAGE:-brandkern/moodle:v4.5.4}
+    restart: unless-stopped
+    depends_on:
+      - moodle
+    entrypoint: ["/cron.sh"]
+    environment: *moodle-env
+    volumes: *moodle-volumes
+
+volumes:
+  backend-static:
+  postgres-data:
+  moodle-db-data:
+  moodledata:
