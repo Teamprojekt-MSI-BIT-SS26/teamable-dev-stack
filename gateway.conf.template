@@ -25,7 +25,7 @@ server {
         alias /srv/static/;
     }
 
-    location ~ ^/(api|admin|lti|oauth|health)(/|$) {
+    location ~ ^/(api|admin|lti|oauth)(/|$) {
         proxy_pass http://web:8000;
     }
 
