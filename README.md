@@ -4,8 +4,8 @@ Teamable frontend, Teamable backend and an own Moodle 4.5 in one Docker Compose 
 
 Documentation (in the [documentation repository](https://github.com/Teamprojekt-MSI-BIT-SS26/documentation)):
 
-- [Dev stack: Moodle + Teamable in Docker](https://teamprojekt-msi-bit-ss26.github.io/documentation/umsetzung/Deployment/dev-stack/): files, local setup, LTI registration, troubleshooting
-- [Development VM at the HTWG](https://teamprojekt-msi-bit-ss26.github.io/documentation/umsetzung/Deployment/backend-htwg-vm/): `.env` for the VM, TLS and host nginx (`backend-htwg-vm.md`)
+- [Local setup with Docker](https://teamprojekt-msi-bit-ss26.github.io/documentation/umsetzung/Deployment/local-docker-setup/): local setup, how the stack works, local troubleshooting
+- [Set up the HTWG VM](https://teamprojekt-msi-bit-ss26.github.io/documentation/umsetzung/Deployment/vm-setup/): step-by-step setup and operation of the dev VM (`.env`, TLS, host nginx, Moodle, LTI registration)
 
 ## Quick start (local)
 

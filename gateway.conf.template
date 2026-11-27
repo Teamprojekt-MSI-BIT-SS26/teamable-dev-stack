@@ -1,4 +1,4 @@
-# Path routing in front of backend and frontend (docs: dev-stack.md, see README)
+# Path routing in front of backend and frontend (docs: local-docker-setup.md, see README)
 # Locally the browser talks to this gateway directly, on the VM the host nginx
 # terminates TLS and forwards to it.
 
