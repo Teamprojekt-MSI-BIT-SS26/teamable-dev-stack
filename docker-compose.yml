@@ -4,7 +4,7 @@
 #   local: http://teamable.localhost:8080, http://moodle.localhost:8008
 #   VM:    https://<teamable-host>, https://<moodle-host> (TLS in the host nginx)
 #
-# Docs: dev-stack.md in the documentation repository (see README)
+# Docs: local-docker-setup.md in the documentation repository (see README)
 # Start: cp .env.example .env && docker compose up -d --build
 
 name: ${COMPOSE_PROJECT_NAME:-teamable-dev}
